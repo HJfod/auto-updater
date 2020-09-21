@@ -1,21 +1,18 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
 using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.IO;
 using System.IO.Compression;
 using System.Net;
 using System.Text.RegularExpressions;
+using System.Diagnostics;
 
 namespace auto_updater {
     public partial class Pog : Form {
         public string Repo;
         public string AppVersion;
+        public string AppName;
+        public string ExeName;
         public float DPI = 1F;
         public TableLayoutPanel container;
 
@@ -28,7 +25,11 @@ namespace auto_updater {
 
         private Control AddLoad(string _text, Control h) {
             TableLayoutPanel c = new TableLayoutPanel();
-            c.RowCount = 2;
+            c.Dock = DockStyle.Fill;
+            c.Height = 30;
+            c.ColumnCount = 2;
+            c.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            c.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
 
             Label text = new Label();
             text.AutoSize = true;
@@ -40,11 +41,11 @@ namespace auto_updater {
             p.Minimum = 0;
             p.Step = 1;
             p.Value = 1;
-            p.Dock = DockStyle.Fill;
+            p.Width = c.Width / 2;
             p.Name = "__pogg";
 
-            c.Controls.Add(text);
-            c.Controls.Add(p);
+            c.Controls.Add(text, 0, 0);
+            c.Controls.Add(p, 1, 0);
 
             h.Controls.Add(c);
             
@@ -71,7 +72,9 @@ namespace auto_updater {
             this.DPI = ( (new Label()).CreateGraphics().DpiX / 96 );
 
             this.Text = "Auto-update";
-            this.Size = new Size((int)(400F * DPI), (int)(200F * DPI));
+            this.Size = new Size((int)(400F * DPI), (int)(300F * DPI));
+
+            this.CenterToScreen();
 
             foreach (string line in File.ReadAllLines(".update")) {
                 string val = line.Substring(line.IndexOf(":") + 1).Trim();
@@ -79,12 +82,16 @@ namespace auto_updater {
                 switch (line.Substring(0, line.IndexOf(":")).Trim()) {
                     case "app-name":
                         this.Text = $"Updating {val}...";
+                        this.AppName = val;
                         break;
                     case "github-repo":
                         this.Repo = val;
                         break;
                     case "app-version":
                         this.AppVersion = val;
+                        break;
+                    case "run-exe":
+                        this.ExeName = val;
                         break;
                 }
             }
@@ -102,7 +109,7 @@ namespace auto_updater {
             container.Dock = DockStyle.Fill;
             container.AutoSize = true;
 
-            var vercheck = AddLoad("Checking version...", this);
+            var vercheck = AddLoad("Checking version...", container);
 
             this.Controls.Add(container);
 
@@ -141,10 +148,10 @@ namespace auto_updater {
                     this._G(vercheck, "t").Text = "Already up-to-date.";
                     ((ProgressBar)this._G(vercheck, "p")).Value = 100;
                 } else if (vero < vern) {
-                    this._G(vercheck, "t").Text = "Found!";
+                    this._G(vercheck, "t").Text = $"Target version: {GetJSONKey(rec, "tag_name")}";
                     ((ProgressBar)this._G(vercheck, "p")).Value = 100;
 
-                    var down = AddLoad("Downloading...", this);
+                    var down = AddLoad("Downloading...", container);
 
                     WebClient cli = new WebClient();
                     cli.Headers.Add("Accept: text/html, application/xhtml+xml, */*");
@@ -154,14 +161,39 @@ namespace auto_updater {
                         double total = double.Parse(e.TotalBytesToReceive.ToString());
                         double perc = now / total * 100;
 
-                        this._G(vercheck, "t").Text = $"Downloaded {now} / {total} bytes...";
-                        ((ProgressBar)this._G(vercheck, "p")).Value = int.Parse(Math.Truncate(perc).ToString());
+                        this._G(down, "t").Text = $"Downloaded {Math.Floor(now / 1000000)}mb / {Math.Floor(total / 1000000)}mb ({Math.Floor(perc)}%)...";
+                        ((ProgressBar)this._G(down, "p")).Value = int.Parse(Math.Truncate(perc).ToString());
                     };
                     cli.DownloadFileCompleted += (s, e) => {
-                        this._G(vercheck, "t").Text = "Download complete!";
+                        this._G(down, "t").Text = "Download complete!";
 
-                        var unzip = AddLoad("Unzipping...", this);
-                        ZipFile.ExtractToDirectory("__download.zip", Directory.GetCurrentDirectory(), true);
+                        var unzip = AddLoad("Unzipping...", container);
+
+                        ZipFile.ExtractToDirectory("__download.zip", $"{Directory.GetCurrentDirectory()}\\__download", true);
+
+                        this._G(unzip, "t").Text = $"Succesfully unzipped!";
+                        ((ProgressBar)this._G(unzip, "p")).Value = 100;
+
+                        TableLayoutPanel p = new TableLayoutPanel();
+                        p.AutoSize = true;
+
+                        CheckBox en = new CheckBox();
+                        en.Text = $"Launch {AppName}";
+                        en.AutoSize = true;
+
+                        Button fin = new Button();
+                        fin.Text = "Finish";
+                        fin.Click += (s, e) => {
+                            if (en.Checked) {
+                                Process.Start($"{Directory.GetCurrentDirectory()}\\__download\\{this.ExeName}");
+                            }
+                            this.Dispose();
+                        };
+
+                        p.Controls.Add(en);
+                        p.Controls.Add(fin);
+
+                        container.Controls.Add(p);
                     };
                     Console.WriteLine(GetJSONKey(rec, "browser_download_url"));
                     cli.DownloadFileAsync(new Uri(GetJSONKey(rec, "browser_download_url")), "__download.zip");
