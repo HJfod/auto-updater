@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.IO;
+using System.IO.Compression;
 using System.Net;
 using System.Text.RegularExpressions;
 
@@ -15,8 +16,8 @@ namespace auto_updater {
     public partial class Pog : Form {
         public string Repo;
         public string AppVersion;
-        public ProgressBar poggers;
-        public Label pogtext;
+        public float DPI = 1F;
+        public TableLayoutPanel container;
 
         private int ConvertVer(string ver) {
             string res = "";
@@ -25,24 +26,59 @@ namespace auto_updater {
             return Int32.Parse(res);
         }
 
+        private Control AddLoad(string _text, Control h) {
+            TableLayoutPanel c = new TableLayoutPanel();
+            c.RowCount = 2;
+
+            Label text = new Label();
+            text.AutoSize = true;
+            text.Text = _text;
+            text.Name = "__text";
+
+            ProgressBar p = new ProgressBar();
+            p.Maximum = 100;
+            p.Minimum = 0;
+            p.Step = 1;
+            p.Value = 1;
+            p.Dock = DockStyle.Fill;
+            p.Name = "__pogg";
+
+            c.Controls.Add(text);
+            c.Controls.Add(p);
+
+            h.Controls.Add(c);
+            
+            return c;
+        }
+
         private string GetJSONKey(string _json, string _key) {
             string tag = Regex.Match(_json, $"\"{_key}\":\".*?\"", RegexOptions.None, Regex.InfiniteMatchTimeout).Value;
             if (tag == null || tag == "") return null;
             tag = tag.Substring(tag.IndexOf(":"));
-            tag = tag.Substring(tag.IndexOf('"') + 1, tag.LastIndexOf('"') - 1);
+            tag = tag.Substring(tag.IndexOf('"') + 1, tag.LastIndexOf('"') - tag.IndexOf('"') - 1);
             return tag;
         }
 
+        private Control _G(Control c, string type) {
+            if (type == "p") {
+                return ((ProgressBar)c.Controls.Find("__pogg", true)[0]);
+            } else {
+                return c.Controls.Find("__text", true)[0];
+            }
+        }
+
         public Pog() {
+            this.DPI = ( (new Label()).CreateGraphics().DpiX / 96 );
+
             this.Text = "Auto-update";
-            this.Size = new Size(400, 200);
+            this.Size = new Size((int)(400F * DPI), (int)(200F * DPI));
 
             foreach (string line in File.ReadAllLines(".update")) {
                 string val = line.Substring(line.IndexOf(":") + 1).Trim();
 
                 switch (line.Substring(0, line.IndexOf(":")).Trim()) {
                     case "app-name":
-                        this.Text = val;
+                        this.Text = $"Updating {val}...";
                         break;
                     case "github-repo":
                         this.Repo = val;
@@ -62,21 +98,11 @@ namespace auto_updater {
                 this.Dispose();
             }
 
-            TableLayoutPanel container = new TableLayoutPanel();
+            container = new TableLayoutPanel();
+            container.Dock = DockStyle.Fill;
+            container.AutoSize = true;
 
-            pogtext = new Label();
-            pogtext.AutoSize = true;
-
-            pogtext.Text = "Checking version...";
-
-            poggers = new ProgressBar();
-            poggers.Maximum = 100;
-            poggers.Minimum = 0;
-            poggers.Step = 1;
-            poggers.Value = 1;
-
-            container.Controls.Add(pogtext);
-            container.Controls.Add(poggers);
+            var vercheck = AddLoad("Checking version...", this);
 
             this.Controls.Add(container);
 
@@ -112,8 +138,14 @@ namespace auto_updater {
                 int vern = ConvertVer(GetJSONKey(rec, "tag_name"));
                 int vero = ConvertVer(this.AppVersion);
                 if (vero == vern) {
-                    this.Dispose();
+                    this._G(vercheck, "t").Text = "Already up-to-date.";
+                    ((ProgressBar)this._G(vercheck, "p")).Value = 100;
                 } else if (vero < vern) {
+                    this._G(vercheck, "t").Text = "Found!";
+                    ((ProgressBar)this._G(vercheck, "p")).Value = 100;
+
+                    var down = AddLoad("Downloading...", this);
+
                     WebClient cli = new WebClient();
                     cli.Headers.Add("Accept: text/html, application/xhtml+xml, */*");
                     cli.Headers.Add("User-Agent: Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0)");
@@ -122,16 +154,20 @@ namespace auto_updater {
                         double total = double.Parse(e.TotalBytesToReceive.ToString());
                         double perc = now / total * 100;
 
-                        this.pogtext.Text = $"Downloaded {now} / {total} bytes...";
-                        this.poggers.Value = int.Parse(Math.Truncate(perc).ToString());
+                        this._G(vercheck, "t").Text = $"Downloaded {now} / {total} bytes...";
+                        ((ProgressBar)this._G(vercheck, "p")).Value = int.Parse(Math.Truncate(perc).ToString());
                     };
                     cli.DownloadFileCompleted += (s, e) => {
-                        this.pogtext.Text = "Download complete!";
+                        this._G(vercheck, "t").Text = "Download complete!";
+
+                        var unzip = AddLoad("Unzipping...", this);
+                        ZipFile.ExtractToDirectory("__download.zip", Directory.GetCurrentDirectory(), true);
                     };
                     Console.WriteLine(GetJSONKey(rec, "browser_download_url"));
                     cli.DownloadFileAsync(new Uri(GetJSONKey(rec, "browser_download_url")), "__download.zip");
                 } else if (vero > vern) {
-                    this.Dispose();
+                    this._G(vercheck, "t").Text = "Using a dev version";
+                    ((ProgressBar)this._G(vercheck, "p")).Value = 100;
                 }
             } catch(Exception e) {
                 MessageBox.Show(e.ToString(), "Error!", MessageBoxButtons.OK, MessageBoxIcon.Error);
