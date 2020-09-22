@@ -3,3 +3,4 @@ bin/
 __download.zip
 __download/
 .vscode/
+.update

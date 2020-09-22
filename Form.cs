@@ -169,7 +169,8 @@ namespace auto_updater {
 
                         var unzip = AddLoad("Unzipping...", container);
 
-                        ZipFile.ExtractToDirectory("__download.zip", $"{Directory.GetCurrentDirectory()}\\__download", true);
+                        ZipFile.ExtractToDirectory("__download.zip", $"{Directory.GetCurrentDirectory()}", true);
+                        File.Delete("__download.zip");
 
                         this._G(unzip, "t").Text = $"Succesfully unzipped!";
                         ((ProgressBar)this._G(unzip, "p")).Value = 100;
@@ -183,10 +184,10 @@ namespace auto_updater {
 
                         Button fin = new Button();
                         fin.Text = "Finish";
+                        fin.AutoSize = true;
                         fin.Click += (s, e) => {
-                            if (en.Checked) {
-                                Process.Start($"{Directory.GetCurrentDirectory()}\\__download\\{this.ExeName}");
-                            }
+                            if (en.Checked)
+                                Process.Start($"{Directory.GetCurrentDirectory()}\\{this.ExeName}");
                             this.Dispose();
                         };
 
